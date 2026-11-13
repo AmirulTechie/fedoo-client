@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, X } from "lucide-react";
+import {
+  createNameFromEmail,
+  saveCustomerSession,
+} from "@/lib/customer-session";
 
 interface SignInModalProps {
   open: boolean;
@@ -9,14 +14,28 @@ interface SignInModalProps {
 }
 
 export default function SignInModal({ open, onClose }: SignInModalProps) {
+  const router = useRouter();
   const [role, setRole] = useState<"customer" | "owner">("customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [signedInUser, setSignedInUser] = useState<string | null>(null);
+  const [signedInOwner, setSignedInOwner] = useState<string | null>(null);
 
   if (!open) return null;
+
+  const completeCustomerLogin = (customerEmail: string, customName?: string) => {
+    const cleanEmail = customerEmail.trim();
+    saveCustomerSession({
+      id: `cust-${cleanEmail.toLowerCase()}`,
+      name: customName ?? createNameFromEmail(cleanEmail),
+      email: cleanEmail,
+      phone: "01712345678",
+    });
+    setSubmitting(false);
+    onClose();
+    router.push("/customer");
+  };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -34,9 +53,21 @@ export default function SignInModal({ open, onClose }: SignInModalProps) {
 
     setSubmitting(true);
     window.setTimeout(() => {
-      setSubmitting(false);
-      setSignedInUser(email.trim());
-    }, 300);
+      if (role === "customer") {
+        completeCustomerLogin(email);
+      } else {
+        setSubmitting(false);
+        setSignedInOwner(email.trim());
+      }
+    }, 250);
+  };
+
+  const handleDemoCustomerLogin = () => {
+    setError(null);
+    setSubmitting(true);
+    window.setTimeout(() => {
+      completeCustomerLogin("tariqul@fedoo.bd", "Tariqul Islam");
+    }, 200);
   };
 
   return (
@@ -74,7 +105,8 @@ export default function SignInModal({ open, onClose }: SignInModalProps) {
             type="button"
             onClick={() => {
               setRole("customer");
-              setSignedInUser(null);
+              setSignedInOwner(null);
+              setError(null);
             }}
             className={`min-h-11 rounded-md px-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
               role === "customer"
@@ -88,7 +120,8 @@ export default function SignInModal({ open, onClose }: SignInModalProps) {
             type="button"
             onClick={() => {
               setRole("owner");
-              setSignedInUser(null);
+              setSignedInOwner(null);
+              setError(null);
             }}
             className={`min-h-11 rounded-md px-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
               role === "owner"
@@ -100,14 +133,14 @@ export default function SignInModal({ open, onClose }: SignInModalProps) {
           </button>
         </div>
 
-        {signedInUser ? (
+        {signedInOwner ? (
           <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700 mt-0.5" />
               <div>
-                <p className="font-semibold">Preview session ready</p>
+                <p className="font-semibold">Owner portal preview ready</p>
                 <p className="mt-1 text-xs leading-relaxed text-emerald-800">
-                  Signed in as {signedInUser} ({role === "owner" ? "Restaurant Owner" : "Customer"}). Live Better Auth routes will connect here in the next build slice.
+                  Signed in as {signedInOwner} (Restaurant Owner). The owner kitchen dashboard is the next build slice.
                 </p>
               </div>
             </div>
@@ -168,6 +201,17 @@ export default function SignInModal({ open, onClose }: SignInModalProps) {
                 ? "Signing In..."
                 : `Continue as ${role === "owner" ? "Restaurant Owner" : "Customer"}`}
             </button>
+
+            {role === "customer" && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleDemoCustomerLogin}
+                className="w-full min-h-11 rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-2.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:opacity-60 transition-colors cursor-pointer"
+              >
+                Use Demo Customer Account
+              </button>
+            )}
           </form>
         )}
       </div>

@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
-import { CheckCircle2, Minus, Plus, ShoppingBag, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, Minus, Plus, ShoppingBag, X } from "lucide-react";
 import { PAYMENT_METHODS } from "@/lib/config";
+import {
+  getCustomerAddresses,
+  getCustomerOrders,
+  getCustomerSession,
+  getServerCustomerAddresses,
+  getServerCustomerSession,
+  saveCustomerOrders,
+  subscribeCustomerStore,
+  type CustomerOrder,
+} from "@/lib/customer-session";
 import { formatBDT, type FeaturedRestaurant } from "@/lib/landing-data";
 
 interface RestaurantDrawerProps {
@@ -15,6 +26,17 @@ export default function RestaurantDrawer({
   restaurant,
   onClose,
 }: RestaurantDrawerProps) {
+  const session = useSyncExternalStore(
+    subscribeCustomerStore,
+    getCustomerSession,
+    getServerCustomerSession
+  );
+  const addresses = useSyncExternalStore(
+    subscribeCustomerStore,
+    getCustomerAddresses,
+    getServerCustomerAddresses
+  );
+
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -22,8 +44,25 @@ export default function RestaurantDrawer({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [orderReference, setOrderReference] = useState<string | null>(null);
+  const [orderNonce, setOrderNonce] = useState(1);
 
   if (!restaurant) return null;
+
+  const defaultAddress = addresses.find((addr) => addr.isDefault) ?? addresses[0];
+
+  const handleUseSavedDetails = () => {
+    if (session) {
+      setCustomerName(session.name);
+      setPhone(session.phone);
+    }
+    if (defaultAddress) {
+      setPhone(defaultAddress.phone);
+      setAddress(
+        `${defaultAddress.streetAddress}, ${defaultAddress.area}, ${defaultAddress.city}`
+      );
+    }
+    setFormError(null);
+  };
 
   const updateQty = (itemId: string, delta: number) => {
     setOrderReference(null);
@@ -73,10 +112,42 @@ export default function RestaurantDrawer({
     }
 
     setSubmitting(true);
+    const idempotencyKey = `drawer-${restaurant.id}-${orderNonce}`;
     window.setTimeout(() => {
+      const existing = getCustomerOrders();
+      if (!existing.some((order) => order.idempotencyKey === idempotencyKey)) {
+        const nowIso = new Date().toISOString();
+        const nextId = `FD-${Math.floor(1100 + Math.random() * 8800)}`;
+        const newOrder: CustomerOrder = {
+          id: nextId,
+          idempotencyKey,
+          restaurantId: restaurant.id,
+          restaurantName: restaurant.name,
+          restaurantArea: `${restaurant.area}, ${restaurant.city}`,
+          status: "pending",
+          items: selectedItems.map((item) => ({
+            itemId: item.id,
+            name: item.name,
+            variant: item.variant,
+            unitPriceBdt: item.priceBdt,
+            quantity: item.qty,
+          })),
+          subtotalBdt: subtotal,
+          deliveryFeeBdt: restaurant.deliveryFeeBdt,
+          totalBdt: total,
+          commissionAmount: 0,
+          paymentMethod: PAYMENT_METHODS[0],
+          deliveryAddress: address.trim(),
+          customerPhone: normalizedPhone,
+          createdAtIso: nowIso,
+          updatedAtIso: nowIso,
+        };
+        saveCustomerOrders([newOrder, ...existing]);
+        setOrderReference(nextId);
+        setOrderNonce((n) => n + 1);
+      }
       setSubmitting(false);
-      setOrderReference(`FD-${Math.floor(1000 + Math.random() * 9000)}`);
-    }, 350);
+    }, 300);
   };
 
   return (
@@ -216,22 +287,43 @@ export default function RestaurantDrawer({
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">
-                      Order {orderReference} confirmed (Preview)
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-emerald-800">
-                      {restaurant.name} received your Cash on Delivery request for{" "}
-                      {formatBDT(total)}. Full backend order persistence and 10-second live tracking come in the next build slice.
-                    </p>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="font-semibold">
+                        Order {orderReference} confirmed
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-emerald-800">
+                        {restaurant.name} received your Cash on Delivery order for{" "}
+                        {formatBDT(total)}. Track progress in real time from your customer dashboard.
+                      </p>
+                    </div>
+                    <Link
+                      href="/customer?tab=tracking"
+                      onClick={onClose}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#B01833] px-4 py-2 text-xs font-semibold text-white hover:bg-[#911329] transition-colors whitespace-nowrap"
+                    >
+                      Track Live Order
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
                   </div>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-3" noValidate>
-                <h3 className="font-[family-name:var(--font-plus-jakarta)] text-sm font-semibold text-zinc-950">
-                  Delivery Details (Cash on Delivery)
-                </h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-[family-name:var(--font-plus-jakarta)] text-sm font-semibold text-zinc-950">
+                    Delivery Details (Cash on Delivery)
+                  </h3>
+                  {(session || defaultAddress) && (
+                    <button
+                      type="button"
+                      onClick={handleUseSavedDetails}
+                      className="text-xs font-semibold text-[#B01833] hover:underline whitespace-nowrap cursor-pointer"
+                    >
+                      Use saved details
+                    </button>
+                  )}
+                </div>
 
                 {formError && (
                   <p

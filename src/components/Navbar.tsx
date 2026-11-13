@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import FedooLogo from "@/components/FedooLogo";
+import {
+  getCustomerSession,
+  getServerCustomerSession,
+  subscribeCustomerStore,
+} from "@/lib/customer-session";
 
 interface NavbarProps {
   onOpenSignIn: () => void;
@@ -17,6 +23,11 @@ const NAV_LINKS = [
 
 export default function Navbar({ onOpenSignIn }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const session = useSyncExternalStore(
+    subscribeCustomerStore,
+    getCustomerSession,
+    getServerCustomerSession
+  );
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur-sm">
@@ -45,13 +56,22 @@ export default function Navbar({ onOpenSignIn }: NavbarProps) {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onOpenSignIn}
-            className="min-h-10 px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-[#B01833] rounded-lg hover:bg-[#911329] transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B01833] cursor-pointer"
-          >
-            Sign In
-          </button>
+          {session ? (
+            <Link
+              href="/customer"
+              className="inline-flex items-center min-h-10 px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-[#B01833] rounded-lg hover:bg-[#911329] transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B01833]"
+            >
+              My Account
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenSignIn}
+              className="min-h-10 px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-[#B01833] rounded-lg hover:bg-[#911329] transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B01833] cursor-pointer"
+            >
+              Sign In
+            </button>
+          )}
 
           <button
             type="button"
